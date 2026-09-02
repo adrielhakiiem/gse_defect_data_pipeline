@@ -1,5 +1,10 @@
 # GSE Defect Data Consolidation Pipeline
 
+> **Work in Progress:** The core pipeline is functional and can be run
+> end-to-end using the included synthetic dataset. This repository is still
+> being actively refined, with further testing, documentation, and
+> improvements planned.
+
 Merges monthly Ground Support Equipment (GSE) defect-report sheets into a
 single master dataset, resolves what's missing, standardizes inconsistent
 text, and produces a dashboard/BI-ready Excel file with a full audit trail.
