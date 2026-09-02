@@ -144,13 +144,16 @@ list of what we found" — a repeatable process rather than a one-time guess.
 
 ## Project structure
 
-config.py # settings: sheet/column names, correction dictionaries
-pipeline.py # core logic: read, reconcile, standardize, flag, convert
-write_output.py # Excel output formatting (4-sheet workbook)
-run_pipeline.py # entry point — run this
-discover_typos.py # standalone typo-discovery tool
-sample_data.xlsx # small synthetic dataset for demo purposes
-README.md
+```text
+gse_defect_data_pipeline/
+├── config.py
+├── pipeline.py
+├── write_output.py
+├── run_pipeline.py
+├── discover_typos.py
+├── sample_data.xlsx
+└── README.md
+```
 
 ## Limitations / things intentionally left for a human
 
