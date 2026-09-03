@@ -1,16 +1,3 @@
-"""
-write_output.py
-================
-Builds the final formatted workbook from the cleaned rows + stats produced
-by pipeline.py. Four sheets:
-
-  1. Master Data (Merged)         - the full cleaned dataset
-  2. Audit - Rows Added           - just the newly-appended rows, for cross-check
-  3. QA - Anomalies & Notes       - every data-quality finding, in plain English
-  4. Change Log - Standardization - every text/spelling fix, with counts
-                                     (built for showing the process to stakeholders)
-"""
-
 from collections import Counter
 
 import openpyxl
@@ -110,7 +97,7 @@ def _write_section(ws, r, title, lines):
     return r + 1
 
 
-def _write_qa_sheet(wb, stats, text_stats, malay_count, date_failures):
+def _write_qa_sheet(wb, stats, text_stats, malay_count, date_failures, maint_stats):
     ws = wb.create_sheet("QA - Anomalies & Notes")
     ws.column_dimensions["A"].width = 105
     ws.cell(row=1, column=1, value="Data Quality & Reconciliation Notes").font = _TITLE_FONT
@@ -152,6 +139,16 @@ def _write_qa_sheet(wb, stats, text_stats, malay_count, date_failures):
         f"Converted from text ('DD.MM.YYYY') to a real date value (still displays the same way) "
         f"so Power BI / Excel can sort, filter, and do time-intelligence correctly. "
         f"Parse failures: {date_failures}.",
+    ])
+    r = _write_section(ws, r, "8. Possible date-typo duplicates (same equipment + defect as Master, different date)", [
+    f"{len(stats['date_typo_suspects'])} found - each pairs a Master row with an appended row that share "
+    "equipment + defect description but disagree on date. Almost always a typo in one of the two dates. "
+    "Verify and fix at the source before trusting the row count.",
+    ])
+    r = _write_section(ws, r, "9. Maintenance By contamination (auto-corrected)", [
+    f"{len(maint_stats['auto_fixed'])} rows had 'Motorized'/'Non-Motorized' in Maintenance By, "
+    "corrected using the equipment's other valid entries (>= 85% agreement required).",
+    f"{len(maint_stats['flagged_for_review'])} left blank - no reliable reference or a genuine split; needs manual entry.",
     ])
     return ws
 
@@ -220,10 +217,10 @@ def _write_changelog_sheet(wb, spelling_counts, categorical_rows, format_fix_cou
 
 
 def write_workbook(rows, stats, text_stats, malay_count, date_failures,
-                    spelling_counts, categorical_rows, format_fix_counts, output_path):
+                    spelling_counts, categorical_rows, format_fix_counts, maint_stats, output_path):
     wb = openpyxl.Workbook()
     _write_master_sheet(wb, rows)
     _write_audit_sheet(wb, rows)
-    _write_qa_sheet(wb, stats, text_stats, malay_count, date_failures)
+    _write_qa_sheet(wb, stats, text_stats, malay_count, date_failures, maint_stats)
     _write_changelog_sheet(wb, spelling_counts, categorical_rows, format_fix_counts)
     wb.save(output_path)

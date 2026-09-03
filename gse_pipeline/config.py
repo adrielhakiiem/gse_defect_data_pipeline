@@ -1,15 +1,3 @@
-"""
-config.py
-=========
-All the settings a future intern needs to touch when a NEW monthly dataset
-comes in. Nothing in the rest of the pipeline should need editing if the
-new file follows the same general shape (one master tab + one tab per month).
-
-If a new month's sheet uses a different header name for an existing concept
-(like April did with "Ownership" instead of "Maintenance By"), add it to
-COLUMN_ALIASES rather than touching the pipeline logic.
-"""
-
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -22,8 +10,8 @@ def _find_source_file():
     """Find the workbook in the project root, accepting the common naming variants."""
     candidates = [
         ROOT_DIR / "Data Consolidation GSE TCR.xlsx",
-        # ROOT_DIR / "Data_Consolidation GSE TCR.xlsx",
-        ROOT_DIR / "Data Consolidation GSE TCR .xlsx",
+        ROOT_DIR / "/Users/ad/Library/CloudStorage/OneDrive-SharedLibraries-OneDrive-SharedLibraries-MAGIdentityPlatform/ADS Quality Assurance, Safety, Security & Compliance - PROJECT EDR (GSE DEFECTS)/Data Consolidation GSE TCR.xlsx",
+        # ROOT_DIR / "Data Consolidation GSE TCR .xlsx",
     ]
 
     for candidate in candidates:
@@ -42,6 +30,7 @@ def _find_source_file():
 
 SOURCE_FILE = _find_source_file()
 OUTPUT_FILE = ROOT_DIR / "EDR_GSE_Master_MERGED.xlsx"
+# OUTPUT_FILE = Path("/Users/ad/Library/CloudStorage/OneDrive-SharedLibraries-OneDrive-SharedLibraries-MAGIdentityPlatform/ADS Quality Assurance, Safety, Security & Compliance - PROJECT EDR (GSE DEFECTS)/EDR_GSE_Master_MERGED.xlsx")
 
 # ---------------------------------------------------------------------------
 # SHEET NAMES
@@ -54,6 +43,7 @@ MONTH_SHEETS = {
     "March": "MARCH 2026",
     "April": "APRIL 2026",
     "May": "MAY 2026",
+    "September": "SEPTEMBER 2026",
 }
 MONTH_ORDER = list(MONTH_SHEETS.keys())
 
@@ -242,3 +232,16 @@ FONT_NAME = "Arial"
 COLOR_APPENDED_ROW = "FFF2CC"   # light amber - row was missing from Master and got appended
 COLOR_MALAY_FLAG = "FFFF00"     # bright yellow - description contains unreviewed Malay text
 COLOR_HEADER_FILL = "2F5496"
+
+# ---------------------------------------------------------------------------
+# MOTORIZED/NON-MOTORIZED CONTAMINATION
+# ---------------------------------------------------------------------------
+# Values that belong in Motorized/Non-Motorized but recurringly get typed
+# into Maintenance By by mistake.
+MAINTENANCE_BY_CONTAMINATION_VALUES = {"MOTORIZED", "NON-MOTORIZED", "NON MOTORIZED", "NONMOTORIZED"}
+VALID_MAINTENANCE_BY = {"TCR", "GSE"}
+
+# Minimum share of agreement among an equipment's OTHER valid Maintenance By
+# entries before we trust it enough to auto-fill. Below this, leave blank
+# and flag instead of guessing.
+MAINTENANCE_BY_CONFIDENCE_THRESHOLD = 0.85

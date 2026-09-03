@@ -1,24 +1,3 @@
-"""
-pipeline.py
-===========
-Core logic for the EDR GSE consolidation pipeline:
-
-  1. read_master()     - load the existing merged Master sheet
-  2. read_month()       - load one month's raw sheet, normalized to the
-                           standard column schema
-  3. reconcile()         - figure out exactly which rows from each month
-                           are missing from Master, using a composite key
-                           so legitimate repeat entries aren't lost or
-                           double-counted
-  4. standardize_text()  - fix known misspellings, punctuation, and
-                           categorical-field inconsistencies
-  5. flag_malay()        - mark (not translate) rows containing Malay text
-
-Each function is independently testable and takes/returns plain Python
-lists of dicts, so this logic isn't tied to openpyxl and could be swapped
-to pandas later without rewriting the reconciliation rules.
-"""
-
 import re
 import datetime as dt
 from collections import Counter
@@ -27,6 +6,19 @@ import openpyxl
 
 import config
 
+import shutil
+import tempfile
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# 0. GET A READABLE COPY (handles the file being open/locked in Excel)
+# ---------------------------------------------------------------------------
+def get_readable_copy(source_path: Path) -> Path:
+    """Copies the (possibly-locked) source into a scratch temp file so the
+    pipeline can read it even while it's open in Excel elsewhere."""
+    tmp_path = Path(tempfile.gettempdir()) / source_path.name
+    shutil.copy2(source_path, tmp_path)
+    return tmp_path
 
 # ---------------------------------------------------------------------------
 # 1. READ MASTER
@@ -156,6 +148,27 @@ def reconcile(master_rows, monthly_rows_by_month):
     master_key_counts = Counter(make_key(r) for r in master_rows)
 
     to_append = []
+    
+    # case row 609: date typo 
+    def detect_date_typo_suspects(master_rows, to_append):
+        master_lookup = {}
+        for r in master_rows:
+            k = (_norm_key_field(r["ADS Equipment No"]), _norm_key_field(r["Defects Description"]))
+            master_lookup.setdefault(k, []).append(r)
+
+        suspects = []
+        for r in to_append:
+            k = (_norm_key_field(r["ADS Equipment No"]), _norm_key_field(r["Defects Description"]))
+            for c in master_lookup.get(k, []):
+                if _norm_key_field(c["Date"]) != _norm_key_field(r["Date"]):
+                    suspects.append({
+                        "equipment": r["ADS Equipment No"],
+                        "description": r["Defects Description"],
+                        "master_date": c["Date"], "master_month": c["By Month"],
+                        "new_date": r["Date"], "new_month": r["By Month"],
+                    })
+        return suspects
+    
     anomalies_master_has_more = []
     dup_within_month = []
 
@@ -175,6 +188,8 @@ def reconcile(master_rows, monthly_rows_by_month):
                 to_append.extend(candidates)
             elif month_count < master_count:
                 anomalies_master_has_more.append((month, key, month_count, master_count))
+
+    date_typo_suspects = detect_date_typo_suspects(master_rows, to_append)
 
     def to_clean_row(r, appended):
         out = {k: clean_display(r[k]) for k in config.STANDARD_COLUMNS}
@@ -208,6 +223,7 @@ def reconcile(master_rows, monthly_rows_by_month):
         "appended_by_month": Counter(r["By Month"] for r in append_clean),
         "anomalies_master_has_more": anomalies_master_has_more,
         "dup_within_month": dup_within_month,
+        "date_typo_suspects": date_typo_suspects,
         "equip_numeric_to_text": sum(1 for r in to_append if isinstance(r["ADS Equipment No"], (int, float))),
         "equip_whitespace_trimmed": sum(
             1 for r in to_append
@@ -343,3 +359,54 @@ def convert_dates(rows):
         except Exception:
             failures += 1
     return failures
+
+# ---------------------------------------------------------------------------
+# 7. PREVENT VALUES OTHER THAN BLANK/GSE/TCR IN MAINTENANCE BY
+# ---------------------------------------------------------------------------
+def fix_maintenance_by_contamination(rows):
+    """
+    Repairs the recurring 'Motorized'/'Non-Motorized' value leaking into
+    Maintenance By (it belongs in the Motorized/Non-Motorized column, not
+    here). Repair is evidence-based, not a guess:
+
+      - Look at every OTHER row for the same ADS Equipment No with a valid
+        Maintenance By (TCR/GSE).
+      - If one value accounts for >= MAINTENANCE_BY_CONFIDENCE_THRESHOLD of
+        that equipment's valid entries, use it.
+      - Otherwise (no other rows, or a real split), leave it blank and flag
+        for manual review - never silently guesses on genuine ambiguity.
+
+    Mutates rows in place. Returns a stats dict for the audit trail.
+    """
+    valid_by_equip = {}
+    for r in rows:
+        val = _norm_key_field(r["Maintenance By"])
+        if val in config.VALID_MAINTENANCE_BY:
+            equip = _norm_key_field(r["ADS Equipment No"])
+            valid_by_equip.setdefault(equip, Counter())[val] += 1
+
+    auto_fixed, flagged = [], []
+    for r in rows:
+        val = _norm_key_field(r["Maintenance By"])
+        if val not in config.MAINTENANCE_BY_CONTAMINATION_VALUES:
+            continue
+
+        equip = _norm_key_field(r["ADS Equipment No"])
+        candidates = valid_by_equip.get(equip)
+        inferred = None
+        if candidates:
+            total = sum(candidates.values())
+            best_val, best_n = candidates.most_common(1)[0]
+            if best_n / total >= config.MAINTENANCE_BY_CONFIDENCE_THRESHOLD:
+                inferred = best_val
+
+        if inferred:
+            r["Maintenance By"] = inferred
+            r["_maintenance_by_autofixed"] = True
+            auto_fixed.append((r["ADS Equipment No"], r["Date"], inferred))
+        else:
+            r["Maintenance By"] = None
+            r["_maintenance_by_flagged"] = True
+            flagged.append((r["ADS Equipment No"], r["Date"]))
+
+    return {"auto_fixed": auto_fixed, "flagged_for_review": flagged}

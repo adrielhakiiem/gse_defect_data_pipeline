@@ -1,15 +1,3 @@
-"""
-run_pipeline.py
-================
-Entry point. Run with:
-
-    python run_pipeline.py
-
-Reads config.SOURCE_FILE, produces config.OUTPUT_FILE, and prints a summary
-of every step so the whole process is visible and auditable - not just the
-final numbers.
-"""
-
 import re
 from collections import Counter
 
@@ -51,7 +39,8 @@ def _categorical_change_counts(original_rows):
 
 def main():
     print(f"Loading source workbook: {config.SOURCE_FILE}")
-    wb = openpyxl.load_workbook(config.SOURCE_FILE, data_only=True)
+    readable_copy = pipeline.get_readable_copy(config.SOURCE_FILE)
+    wb = openpyxl.load_workbook(readable_copy, data_only=True)
 
     # --- 1. Read ---
     master_rows = pipeline.read_master(wb)
@@ -71,6 +60,10 @@ def main():
     if stats["anomalies_master_has_more"]:
         print(f"  WARNING: {len(stats['anomalies_master_has_more'])} rows where Master has "
               f"MORE copies of a key than the source - review these manually.")
+        
+    maint_stats = pipeline.fix_maintenance_by_contamination(final_rows)
+    print(f"\nMaintenance By contamination: {len(maint_stats['auto_fixed'])} auto-corrected, "
+      f"{len(maint_stats['flagged_for_review'])} left blank + flagged (no reliable reference).")
 
     # keep a copy of the pre-cleaning text for the change-log counts below
     original_rows_snapshot = [dict(r) for r in final_rows]
@@ -107,6 +100,7 @@ def main():
     write_output.write_workbook(
         final_rows, stats, text_stats, malay_count, date_failures,
         spelling_counts, categorical_rows, format_fix_counts,
+        maint_stats,
         config.OUTPUT_FILE,
     )
     print(f"\nSaved: {config.OUTPUT_FILE}")
