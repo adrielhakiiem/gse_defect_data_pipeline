@@ -132,25 +132,17 @@ python run_pipeline.py
 ### Configure private file locations
 
 This public repository intentionally contains no personal laptop or SharePoint
-paths. Configure them through environment variables on the machine that runs
-the pipeline; do not add those paths to `config.py` or commit them in a `.env`
-file.
+paths. Before the first run, copy `gse_pipeline/config_local.example.py` to
+`gse_pipeline/config_local.py` and enter the private source/output paths there.
+`config_local.py` is ignored by Git and must never be committed.
 
 ```bash
-# Use one private project folder for both files
-export GSE_PROJECT_FOLDER="/private/path/to/project-folder"
-
-# Or read the SharePoint source while writing a local review copy
-export GSE_SOURCE_FILE="/private/path/to/Data Consolidation GSE TCR.xlsx"
-export GSE_OUTPUT_FILE="$PWD/EDR_GSE_Master_MERGED.xlsx"
-
 python run_pipeline.py
 ```
 
-`GSE_SOURCE_FILE` and `GSE_OUTPUT_FILE` take priority over
-`GSE_PROJECT_FOLDER`. If none are set, the pipeline looks for the source and
-writes the output in the repository root, which is convenient for the included
-sample data.
+In `config.py`, select where to write the workbook by commenting/uncommenting
+one of the two adjacent `OUTPUT_FILE` lines: local review is active by default;
+the other line publishes directly to SharePoint.
 
 Run against `sample_data.xlsx` (included) to see the pipeline work
 end-to-end without needing the real dataset.

@@ -1,23 +1,28 @@
 import calendar
-import os
 import re
 from pathlib import Path
+
+try:
+    import config_local
+except ImportError as exc:
+    raise RuntimeError(
+        "Missing config_local.py. Copy config_local.example.py to config_local.py "
+        "and enter your private SharePoint paths there."
+    ) from exc
 
 # ---------------------------------------------------------------------------
 # FILE PATHS
 # ---------------------------------------------------------------------------
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
-# Keep machine- and organisation-specific paths out of source control. Set
-# GSE_PROJECT_FOLDER, or override either file independently with GSE_SOURCE_FILE
-# and GSE_OUTPUT_FILE. Without overrides, files are read/written in the repo root.
-_PROJECT_FOLDER = Path(os.environ.get("GSE_PROJECT_FOLDER", ROOT_DIR))
-SOURCE_FILE = Path(os.environ.get(
-    "GSE_SOURCE_FILE", _PROJECT_FOLDER / "Data Consolidation GSE TCR.xlsx"
-))
-OUTPUT_FILE = Path(os.environ.get(
-    "GSE_OUTPUT_FILE", _PROJECT_FOLDER / "EDR_GSE_Master_MERGED.xlsx"
-))
+# INPUT: always read the private SharePoint source set in config_local.py.
+SOURCE_FILE = Path(config_local.SHAREPOINT_SOURCE_FILE)
+
+# OUTPUT: choose EXACTLY ONE of the following two lines.
+# LOCAL REVIEW (active): output beside this repository.
+OUTPUT_FILE = ROOT_DIR / "EDR_GSE_Master_MERGED.xlsx"
+# SHAREPOINT PUBLISHING: comment the local line above, then uncomment this line.
+# OUTPUT_FILE = Path(config_local.SHAREPOINT_OUTPUT_FILE)
 
 # ---------------------------------------------------------------------------
 # SHEET NAMES
