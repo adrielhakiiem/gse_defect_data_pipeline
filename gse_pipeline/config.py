@@ -1,3 +1,6 @@
+import calendar
+import os
+import re
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -5,47 +8,57 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
-
-def _find_source_file():
-    """Find the workbook in the project root, accepting the common naming variants."""
-    candidates = [
-        ROOT_DIR / "Data Consolidation GSE TCR.xlsx",
-        ROOT_DIR / "/Users/ad/Library/CloudStorage/OneDrive-SharedLibraries-OneDrive-SharedLibraries-MAGIdentityPlatform/ADS Quality Assurance, Safety, Security & Compliance - PROJECT EDR (GSE DEFECTS)/Data Consolidation GSE TCR.xlsx",
-        # ROOT_DIR / "Data Consolidation GSE TCR .xlsx",
-    ]
-
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-
-    matches = sorted(ROOT_DIR.glob("*GSE*TCR*.xlsx"))
-    if matches:
-        return matches[0]
-
-    raise FileNotFoundError(
-        f"Could not find the source Excel file in {ROOT_DIR}. "
-        "Expected a file like 'Data Consolidation GSE TCR.xlsx' or 'Data_Consolidation GSE TCR.xlsx'."
-    )
-
-
-SOURCE_FILE = _find_source_file()
-OUTPUT_FILE = ROOT_DIR / "EDR_GSE_Master_MERGED.xlsx"
-# OUTPUT_FILE = Path("/Users/ad/Library/CloudStorage/OneDrive-SharedLibraries-OneDrive-SharedLibraries-MAGIdentityPlatform/ADS Quality Assurance, Safety, Security & Compliance - PROJECT EDR (GSE DEFECTS)/EDR_GSE_Master_MERGED.xlsx")
+# Keep machine- and organisation-specific paths out of source control. Set
+# GSE_PROJECT_FOLDER, or override either file independently with GSE_SOURCE_FILE
+# and GSE_OUTPUT_FILE. Without overrides, files are read/written in the repo root.
+_PROJECT_FOLDER = Path(os.environ.get("GSE_PROJECT_FOLDER", ROOT_DIR))
+SOURCE_FILE = Path(os.environ.get(
+    "GSE_SOURCE_FILE", _PROJECT_FOLDER / "Data Consolidation GSE TCR.xlsx"
+))
+OUTPUT_FILE = Path(os.environ.get(
+    "GSE_OUTPUT_FILE", _PROJECT_FOLDER / "EDR_GSE_Master_MERGED.xlsx"
+))
 
 # ---------------------------------------------------------------------------
 # SHEET NAMES
 # ---------------------------------------------------------------------------
 MASTER_SHEET = "EDR GSE (FEB 2026 - MAY 2026)"
+# DISABLED EQUIPMENT-CODE QA: uncomment this together with the marked blocks
+# in pipeline.py, write_output.py, and run_pipeline.py to restore the review tab.
+# EQUIPMENT_CODE_QA_SHEET = "QA - Equipment Code Mismatches"
 
-# Order matters: this is also the chronological order used for sorting output.
-MONTH_SHEETS = {
-    "February": "FEBRUARY 2026",
-    "March": "MARCH 2026",
-    "April": "APRIL 2026",
-    "May": "MAY 2026",
-    "September": "SEPTEMBER 2026",
+# Monthly sheets are discovered from the open source workbook rather than
+# maintained manually. New tabs such as "OCTOBER 2026" are included next run.
+MONTH_SHEET_PATTERN = re.compile(r"^([A-Z]+)\s+(\d{4})$")
+NON_MONTH_SHEETS = {
+    MASTER_SHEET,
+    "Equipment Pie Chart", "Top 3 Equipment By Month", "Equipment Type column Chart",
+    "INSPECTION FEB MAR APR MAY 26", "INSPECTION MAY ", "DEFECTS SPECIFICATION",
+    "MOTORIZED-NON MOTORIZED", "DEFECTS CATEGORIZATION", "No Baggage Defects",
+    "UNIT NO EQUIPMENT DEFECTS ", "Sheet1", ".",
 }
-MONTH_ORDER = list(MONTH_SHEETS.keys())
+
+
+def detect_month_sheets(sheet_names):
+    """Return (month-name label, sheet name) pairs in calendar order.
+
+    Only uppercase MONTH YYYY sheet names qualify; known reporting/support
+    tabs are explicitly ignored.
+    """
+    detected = []
+    for sheet_name in sheet_names:
+        if sheet_name in NON_MONTH_SHEETS:
+            continue
+        match = MONTH_SHEET_PATTERN.fullmatch(sheet_name)
+        if not match:
+            continue
+        month_name, year_text = match.groups()
+        try:
+            month_number = list(calendar.month_name).index(month_name.title())
+        except ValueError:
+            continue
+        detected.append(((int(year_text), month_number), month_name.title(), sheet_name))
+    return [(label, sheet_name) for _, label, sheet_name in sorted(detected)]
 
 # ---------------------------------------------------------------------------
 # COLUMN SCHEMA

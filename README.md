@@ -97,9 +97,9 @@ call.
 
 ## What the pipeline does, step by step
 
-1. **Read** the Master sheet and each monthly sheet, normalizing each into
-   the same column schema (handling cases where different months use
-   slightly different header names for the same field)
+1. **Read** the Master sheet and automatically detect monthly `MONTH YYYY`
+   sheets, normalizing each into the same column schema (handling cases
+   where different months use slightly different header names for the same field)
 2. **Reconcile**: find every row present in a monthly sheet but missing from
    Master, using the composite key described above, and append only those
 3. **Standardize text**: fix dozens of recurring misspellings, punctuation
@@ -111,10 +111,10 @@ call.
    translate)
 6. **Convert the Date column** from text to a real date type, so BI tools /
    Excel can sort, filter, and do time-intelligence without extra measures
-7. **Write the output workbook**: the cleaned Master data (with color-coded
-   flags), an audit list of every appended row, a plain-English QA/anomalies
-   write-up, and a Change Log with exact before/after counts for every text
-   fix applied
+7. **Write the output workbook**: a Read Me notice, cleaned Master data,
+   one cleaned tab per detected month, an audit list of every appended row,
+   a plain-English QA/anomalies write-up, and a Change Log with exact
+   before/after counts for every text fix applied
 
 ## Usage
 
@@ -128,6 +128,29 @@ python discover_typos.py
 # Step 2: run the actual merge + clean
 python run_pipeline.py
 ```
+
+### Configure private file locations
+
+This public repository intentionally contains no personal laptop or SharePoint
+paths. Configure them through environment variables on the machine that runs
+the pipeline; do not add those paths to `config.py` or commit them in a `.env`
+file.
+
+```bash
+# Use one private project folder for both files
+export GSE_PROJECT_FOLDER="/private/path/to/project-folder"
+
+# Or read the SharePoint source while writing a local review copy
+export GSE_SOURCE_FILE="/private/path/to/Data Consolidation GSE TCR.xlsx"
+export GSE_OUTPUT_FILE="$PWD/EDR_GSE_Master_MERGED.xlsx"
+
+python run_pipeline.py
+```
+
+`GSE_SOURCE_FILE` and `GSE_OUTPUT_FILE` take priority over
+`GSE_PROJECT_FOLDER`. If none are set, the pipeline looks for the source and
+writes the output in the repository root, which is convenient for the included
+sample data.
 
 Run against `sample_data.xlsx` (included) to see the pipeline work
 end-to-end without needing the real dataset.

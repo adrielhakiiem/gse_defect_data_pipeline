@@ -15,8 +15,8 @@ def collect_all_descriptions(wb):
     descs = []
     master_rows = pipeline.read_master(wb)
     descs += [r["Defects Description"] for r in master_rows]
-    for month in config.MONTH_ORDER:
-        rows = pipeline.read_month(wb, month)
+    for month, sheet_name in config.detect_month_sheets(wb.sheetnames):
+        rows = pipeline.read_month(wb, month, sheet_name)
         descs += [r["Defects Description"] for r in rows]
     return [d for d in descs if d]
 

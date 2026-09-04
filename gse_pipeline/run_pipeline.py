@@ -1,4 +1,5 @@
 import re
+import zipfile
 from collections import Counter
 
 import openpyxl
@@ -39,18 +40,46 @@ def _categorical_change_counts(original_rows):
 
 def main():
     print(f"Loading source workbook: {config.SOURCE_FILE}")
-    readable_copy = pipeline.get_readable_copy(config.SOURCE_FILE)
-    wb = openpyxl.load_workbook(readable_copy, data_only=True)
+    try:
+        readable_copy = pipeline.get_readable_copy(config.SOURCE_FILE)
+        wb = openpyxl.load_workbook(readable_copy, data_only=True)
+        if config.MASTER_SHEET not in wb.sheetnames:
+            raise pipeline.PipelineInputError(
+                f"The required Master sheet '{config.MASTER_SHEET}' was not found."
+            )
+        month_sheets = config.detect_month_sheets(wb.sheetnames)
+        if not month_sheets:
+            raise pipeline.PipelineInputError(
+                "No monthly sheets were found. Expected names such as 'FEBRUARY 2026'."
+            )
+    except FileNotFoundError:
+        print(f"ERROR: Source workbook was not found: {config.SOURCE_FILE}")
+        return 1
+    except (PermissionError, OSError, ValueError, zipfile.BadZipFile,
+            openpyxl.utils.exceptions.InvalidFileException) as exc:
+        print(f"ERROR: Could not open the source workbook '{config.SOURCE_FILE}': {exc}")
+        return 1
+    except pipeline.PipelineInputError as exc:
+        print(f"ERROR: {exc}")
+        return 1
 
     # --- 1. Read ---
-    master_rows = pipeline.read_master(wb)
+    try:
+        master_rows = pipeline.read_master(wb)
+    except pipeline.PipelineInputError as exc:
+        print(f"ERROR: {exc}")
+        return 1
     print(f"  Master rows read: {len(master_rows)}")
 
     monthly_rows_by_month = {}
-    for month in config.MONTH_ORDER:
-        rows = pipeline.read_month(wb, month)
+    for month, sheet_name in month_sheets:
+        try:
+            rows = pipeline.read_month(wb, month, sheet_name)
+        except pipeline.PipelineInputError as exc:
+            print(f"ERROR: {exc}")
+            return 1
         monthly_rows_by_month[month] = rows
-        print(f"  {month} rows read: {len(rows)}")
+        print(f"  {month} ({sheet_name}) rows read: {len(rows)}")
 
     # --- 2. Reconcile (find what's missing, append it) ---
     final_rows, stats = pipeline.reconcile(master_rows, monthly_rows_by_month)
@@ -72,6 +101,14 @@ def main():
     text_stats = pipeline.standardize_text(final_rows)
     print(f"\nDefects Description rows changed: {text_stats['desc_rows_fixed']}")
     print(f"Categorical field cells standardized: {text_stats['categorical_fixed']}")
+
+    # DISABLED EQUIPMENT-CODE QA: uncomment with the marked blocks in
+    # pipeline.py, write_output.py, and config.py to restore this check.
+    # equipment_code_qa = pipeline.check_equipment_code_matches(final_rows)
+    # print("Equipment-code QA: "
+    #       f"matched={equipment_code_qa['matched']}, "
+    #       f"no_code_present={equipment_code_qa['no_code_present']}, "
+    #       f"possible_mismatch={equipment_code_qa['possible_mismatch']}")
 
     # --- 4. Flag Malay text (not translated) ---
     malay_count = pipeline.flag_malay(final_rows)
@@ -101,10 +138,12 @@ def main():
         final_rows, stats, text_stats, malay_count, date_failures,
         spelling_counts, categorical_rows, format_fix_counts,
         maint_stats,
+        # equipment_code_qa,  # DISABLED EQUIPMENT-CODE QA
+        [month for month, _ in month_sheets],
         config.OUTPUT_FILE,
     )
     print(f"\nSaved: {config.OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

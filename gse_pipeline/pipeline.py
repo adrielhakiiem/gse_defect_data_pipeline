@@ -28,6 +28,11 @@ def read_master(wb):
     ws = wb[config.MASTER_SHEET]
     headers = [c.value for c in ws[1]]
     col_idx = {h: i + 1 for i, h in enumerate(headers) if h}
+    missing = [name for name in config.STANDARD_COLUMNS if name not in col_idx]
+    if missing:
+        raise PipelineInputError(
+            f"The Master sheet '{config.MASTER_SHEET}' is missing required column(s): {', '.join(missing)}."
+        )
 
     rows = []
     for r in range(2, ws.max_row + 1):
@@ -37,7 +42,7 @@ def read_master(wb):
             continue  # skip fully blank rows
         rows.append({
             "Date": date,
-            "By Month": ws.cell(row=r, column=col_idx["By Month"]).value,
+            "By Month": _month_label(ws.cell(row=r, column=col_idx["By Month"]).value),
             "ADS Equipment No": equip,
             "Equipment Type": ws.cell(row=r, column=col_idx["Equipment Type"]).value,
             "Maintenance By": ws.cell(row=r, column=col_idx["Maintenance By"]).value,
@@ -62,9 +67,8 @@ def _resolve_column(headers_clean, standard_name):
     return None
 
 
-def read_month(wb, month_label):
+def read_month(wb, month_label, sheet_name):
     """Read one month's raw sheet into standardized row dicts."""
-    sheet_name = config.MONTH_SHEETS[month_label]
     ws = wb[sheet_name]
     raw_headers = [c.value for c in ws[1]]
     headers_clean = {h.strip() if isinstance(h, str) else h: i + 1
@@ -73,6 +77,11 @@ def read_month(wb, month_label):
     col = {name: _resolve_column(headers_clean, name) for name in config.STANDARD_COLUMNS}
     # Date and ADS Equipment No are mandatory; everything else is optional
     # (a missing optional column just means that field is None for the month).
+    required = [name for name in ("Date", "ADS Equipment No") if col[name] is None]
+    if required:
+        raise PipelineInputError(
+            f"The monthly sheet '{sheet_name}' is missing required column(s): {', '.join(required)}."
+        )
 
     rows = []
     for r in range(2, ws.max_row + 1):
@@ -104,6 +113,17 @@ def _norm_key_field(v):
     return _norm_ws(v).upper()
 
 
+class PipelineInputError(Exception):
+    """A source-workbook issue that should be explained without a traceback."""
+
+
+def _month_label(value):
+    """Keep By Month as a simple display month, even if source includes a year."""
+    label = _norm_ws(value)
+    match = re.match(r"[A-Za-z]+", label)
+    return match.group(0).title() if match else label
+
+
 def clean_display(v):
     """Normalize a value for DISPLAY (not just matching): trims whitespace
     and converts numeric equipment numbers to text so the whole column has
@@ -119,6 +139,19 @@ def clean_display(v):
 
 def make_key(row):
     return tuple(_norm_key_field(row[f]) for f in config.MATCH_KEY_FIELDS)
+
+
+def _normalized_date_key(value):
+    """Return one comparable calendar-date value for text and Excel dates."""
+    if isinstance(value, (dt.date, dt.datetime)):
+        return value.date().isoformat() if isinstance(value, dt.datetime) else value.isoformat()
+    text = _norm_ws(value)
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return dt.datetime.strptime(text, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return text.upper()
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +182,8 @@ def reconcile(master_rows, monthly_rows_by_month):
 
     to_append = []
     
-    # case row 609: date typo 
+    # Flags only an appended row whose equipment + description exists in Master
+    # but whose normalized calendar date is absent from those Master matches.
     def detect_date_typo_suspects(master_rows, to_append):
         master_lookup = {}
         for r in master_rows:
@@ -159,14 +193,17 @@ def reconcile(master_rows, monthly_rows_by_month):
         suspects = []
         for r in to_append:
             k = (_norm_key_field(r["ADS Equipment No"]), _norm_key_field(r["Defects Description"]))
-            for c in master_lookup.get(k, []):
-                if _norm_key_field(c["Date"]) != _norm_key_field(r["Date"]):
-                    suspects.append({
-                        "equipment": r["ADS Equipment No"],
-                        "description": r["Defects Description"],
-                        "master_date": c["Date"], "master_month": c["By Month"],
-                        "new_date": r["Date"], "new_month": r["By Month"],
-                    })
+            candidates = master_lookup.get(k, [])
+            if not candidates or any(_normalized_date_key(c["Date"]) == _normalized_date_key(r["Date"])
+                                     for c in candidates):
+                continue
+            c = candidates[0]
+            suspects.append({
+                "equipment": r["ADS Equipment No"],
+                "description": r["Defects Description"],
+                "master_date": c["Date"], "master_month": c["By Month"],
+                "new_date": r["Date"], "new_month": r["By Month"],
+            })
         return suspects
     
     anomalies_master_has_more = []
@@ -197,6 +234,8 @@ def reconcile(master_rows, monthly_rows_by_month):
         return out
 
     def parse_date_sort_key(s):
+        if isinstance(s, (dt.date, dt.datetime)):
+            return (s.year, s.month, s.day)
         try:
             d, m, y = str(s).strip().split(".")
             return (int(y), int(m), int(d))
@@ -206,15 +245,7 @@ def reconcile(master_rows, monthly_rows_by_month):
     master_clean = [to_clean_row(r, False) for r in master_rows]
     append_clean = [to_clean_row(r, True) for r in to_append]
 
-    final_rows = []
-    for month in config.MONTH_ORDER:
-        existing_block = [r for r in master_clean if r["By Month"] == month]
-        new_block = sorted(
-            [r for r in append_clean if r["By Month"] == month],
-            key=lambda r: parse_date_sort_key(r["Date"]),
-        )
-        final_rows.extend(existing_block)
-        final_rows.extend(new_block)
+    final_rows = sorted(master_clean + append_clean, key=lambda r: parse_date_sort_key(r["Date"]))
 
     stats = {
         "master_total": len(master_rows),
@@ -327,7 +358,49 @@ def standardize_text(rows):
 
 
 # ---------------------------------------------------------------------------
-# 5. FLAG MALAY TEXT (never translated automatically)
+# DISABLED EQUIPMENT-CODE QA -------------------------------------------------
+# Restore this optional, review-only check by uncommenting this block and the
+# correspondingly marked blocks in config.py, write_output.py, and run_pipeline.py.
+# _ALNUM_RE = re.compile(r"[^A-Z0-9]+")
+#
+# def _norm_equipment_code(value):
+#     return _ALNUM_RE.sub("", str(value or "").upper())
+#
+# def _leading_code_like_segment(description):
+#     if description is None:
+#         return None
+#     separator = re.search(r"[/-]", str(description))
+#     if not separator:
+#         return None
+#     segment = str(description)[:separator.start()].strip()
+#     return segment if re.search(r"\d", segment) else None
+#
+# def check_equipment_code_matches(rows):
+#     """Classify standardized rows; this never changes source values."""
+#     counts = Counter()
+#     possible_mismatches, no_codes_present = [], []
+#     for row in rows:
+#         equipment_code = _norm_equipment_code(row["ADS Equipment No"])
+#         description_code = _norm_equipment_code(row["Defects Description"])
+#         if equipment_code and equipment_code in description_code:
+#             counts["matched"] += 1
+#             continue
+#         leading_code = _leading_code_like_segment(row["Defects Description"])
+#         if leading_code:
+#             counts["possible_mismatch"] += 1
+#             possible_mismatches.append({"row": row, "leading_code_found": leading_code,
+#                                         "issue_type": "Possible mismatch"})
+#         else:
+#             counts["no_code_present"] += 1
+#             no_codes_present.append({"row": row, "leading_code_found": "",
+#                                      "issue_type": "No code in description"})
+#     return {"matched": counts["matched"], "no_code_present": counts["no_code_present"],
+#             "possible_mismatch": counts["possible_mismatch"],
+#             "review_rows": possible_mismatches + no_codes_present}
+
+
+# ---------------------------------------------------------------------------
+# 6. FLAG MALAY TEXT (never translated automatically)
 # ---------------------------------------------------------------------------
 _MALAY_PATTERN = re.compile(r"\b(" + "|".join(config.MALAY_WORDS) + r")\b", re.I)
 
@@ -345,7 +418,7 @@ def flag_malay(rows):
 
 
 # ---------------------------------------------------------------------------
-# 6. CONVERT DATE TEXT -> REAL DATE OBJECTS (so Power BI/Excel can use it)
+# 7. CONVERT DATE TEXT -> REAL DATE OBJECTS (so Power BI/Excel can use it)
 # ---------------------------------------------------------------------------
 def convert_dates(rows):
     """Mutates rows in place: 'DD.MM.YYYY' text -> datetime.date. Rows that
@@ -361,7 +434,7 @@ def convert_dates(rows):
     return failures
 
 # ---------------------------------------------------------------------------
-# 7. PREVENT VALUES OTHER THAN BLANK/GSE/TCR IN MAINTENANCE BY
+# 8. PREVENT VALUES OTHER THAN BLANK/GSE/TCR IN MAINTENANCE BY
 # ---------------------------------------------------------------------------
 def fix_maintenance_by_contamination(rows):
     """

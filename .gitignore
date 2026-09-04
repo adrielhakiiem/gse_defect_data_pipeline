@@ -3,3 +3,8 @@
 /EDR_GSE_Master_MERGED.xlsx
 /EDR_GSE_Pipeline_Documentation.docx
 ~$*.xlsx
+
+# Local machine / SharePoint path settings (never commit these)
+.env
+.env.*
+config_local.py
