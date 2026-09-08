@@ -125,20 +125,53 @@ def _month_label(value):
 
 
 def clean_display(v):
-    """Normalize a value for DISPLAY (not just matching): trims whitespace
-    and converts numeric equipment numbers to text so the whole column has
-    a consistent type."""
+    """Normalize ordinary display values without turning blanks into text."""
     if v is None:
         return None
     if isinstance(v, (int, float)):
         if isinstance(v, float) and v.is_integer():
             return str(int(v))
         return str(v)
-    return _norm_ws(v)
+    normalized = _norm_ws(v)
+    return normalized or None
+
+
+def clean_equipment_number(value):
+    """Standardize equipment IDs for reliable joins and Power BI filtering.
+
+    IDs are identifiers rather than prose, so all whitespace and periods are
+    removed and the result is uppercased (for example, ``APW 33.`` ->
+    ``APW33``).
+    """
+    value = clean_display(value)
+    if value is None:
+        return None
+    return re.sub(r"[.\s]+", "", value).upper()
+
+
+def standardize_equipment_numbers(rows):
+    """Mutate rows in place and return the number of changed IDs."""
+    changed = 0
+    for row in rows:
+        original = row["ADS Equipment No"]
+        cleaned = clean_equipment_number(original)
+        if cleaned != original:
+            changed += 1
+        row["ADS Equipment No"] = cleaned
+    return changed
 
 
 def make_key(row):
-    return tuple(_norm_key_field(row[f]) for f in config.MATCH_KEY_FIELDS)
+    """Build a reconciliation key from canonical representations.
+
+    Reconciliation happens before display cleaning, so key construction must
+    independently handle equivalent equipment IDs and date representations.
+    """
+    return (
+        _normalized_date_key(row["Date"]),
+        clean_equipment_number(row["ADS Equipment No"]) or "",
+        _norm_key_field(row["Defects Description"]),
+    )
 
 
 def _normalized_date_key(value):
@@ -355,6 +388,59 @@ def standardize_text(rows):
                 categorical_fixed += 1
 
     return {"desc_rows_fixed": desc_fixed, "categorical_fixed": categorical_fixed}
+
+
+def duplicate_audit(rows):
+    """Return duplicate groups by the requested business-key fields.
+
+    This is deliberately separate from exact-row removal: repeated defect
+    records are useful operational data and must remain in the export.
+    """
+    groups = {}
+    for row in rows:
+        key = tuple(row[field] for field in config.MATCH_KEY_FIELDS)
+        groups.setdefault(key, 0)
+        groups[key] += 1
+
+    audit_rows = []
+    for key, count in groups.items():
+        if count > 1:
+            audit_rows.append(dict(zip(config.MATCH_KEY_FIELDS, key), **{"Count": count}))
+    return sorted(audit_rows, key=lambda row: (str(row["Date"]), row["ADS Equipment No"] or ""))
+
+
+def remove_exact_duplicates(rows):
+    """Remove only rows identical across every canonical data column.
+
+    Rows sharing Date + equipment + description but differing in any other
+    field are retained as separate records.
+    """
+    seen = set()
+    unique_rows = []
+    removed = 0
+    for row in rows:
+        key = tuple(row[field] for field in config.STANDARD_COLUMNS)
+        if key in seen:
+            removed += 1
+            continue
+        seen.add(key)
+        unique_rows.append(row)
+    return unique_rows, removed
+
+
+def blank_counts(rows):
+    """Count blank values in the key categorical fields for the QA report."""
+    fields = (
+        "Date",
+        "ADS Equipment No",
+        "Maintenance By",
+        "Defects Categorization",
+        "Defects Specification",
+    )
+    return {
+        field: sum(row[field] is None or not str(row[field]).strip() for row in rows)
+        for field in fields
+    }
 
 
 # ---------------------------------------------------------------------------

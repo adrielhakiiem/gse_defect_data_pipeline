@@ -118,7 +118,25 @@ def main():
     date_failures = pipeline.convert_dates(final_rows)
     print(f"Dates converted to true date type. Parse failures: {date_failures}")
 
-    # --- 6. Build change-log detail for the output workbook ---
+    # --- 6. Apply identifier cleaning, audit business-key repeats, and remove
+    # only rows that are exact duplicates across the complete canonical row. ---
+    equipment_numbers_changed = pipeline.standardize_equipment_numbers(final_rows)
+    duplicate_audit = pipeline.duplicate_audit(final_rows)
+    final_rows, exact_duplicates_removed = pipeline.remove_exact_duplicates(final_rows)
+    stats.update({
+        "rows_imported": stats["master_total"] + sum(stats["monthly_totals"].values()),
+        "rows_exported": len(final_rows),
+        "exact_duplicates_removed": exact_duplicates_removed,
+        "duplicate_groups_detected": len(duplicate_audit),
+        "duplicate_audit": duplicate_audit,
+        "blank_counts": pipeline.blank_counts(final_rows),
+        "equipment_numbers_changed": equipment_numbers_changed,
+    })
+    print(f"Equipment numbers standardized: {equipment_numbers_changed}")
+    print(f"Exact duplicate rows removed: {exact_duplicates_removed}")
+    print(f"Duplicate groups detected: {len(duplicate_audit)}")
+
+    # --- 7. Build change-log detail for the output workbook ---
     spelling_counts = _spelling_occurrence_counts(original_rows_snapshot)
     categorical_rows = _categorical_change_counts(original_rows_snapshot)
     format_fix_counts = [
@@ -133,7 +151,7 @@ def main():
              if r["Defects Description"] and re.search(r"\(\s|\s\)", str(r["Defects Description"])))),
     ]
 
-    # --- 7. Write output workbook ---
+    # --- 8. Write output workbook ---
     write_output.write_workbook(
         final_rows, stats, text_stats, malay_count, date_failures,
         spelling_counts, categorical_rows, format_fix_counts,

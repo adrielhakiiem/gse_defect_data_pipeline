@@ -20,9 +20,9 @@ SOURCE_FILE = Path(config_local.SHAREPOINT_SOURCE_FILE)
 
 # OUTPUT: choose EXACTLY ONE of the following two lines.
 # LOCAL REVIEW (active): output beside this repository.
-OUTPUT_FILE = ROOT_DIR / "EDR_GSE_Master_MERGED.xlsx"
+# OUTPUT_FILE = ROOT_DIR / "EDR_GSE_Master_MERGED.xlsx"
 # SHAREPOINT PUBLISHING: comment the local line above, then uncomment this line.
-# OUTPUT_FILE = Path(config_local.SHAREPOINT_OUTPUT_FILE)
+OUTPUT_FILE = Path(config_local.SHAREPOINT_OUTPUT_FILE)
 
 # ---------------------------------------------------------------------------
 # SHEET NAMES
