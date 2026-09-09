@@ -98,7 +98,20 @@ def main():
     original_rows_snapshot = [dict(r) for r in final_rows]
 
     # --- 3. Standardize text ---
+    motorized_before = sum(
+        row["Motorized/Non-Motorized"] == "Motorized" for row in final_rows
+    )
+    print(f"Motorized rows before standardization: {motorized_before}")
     text_stats = pipeline.standardize_text(final_rows)
+    motorized_after = sum(
+        row["Motorized/Non-Motorized"] == "Motorized" for row in final_rows
+    )
+    print(f"Motorized rows after standardization: {motorized_after}")
+    if motorized_after != motorized_before:
+        raise RuntimeError(
+            "Motorized row count changed during standardization: "
+            f"{motorized_before} before, {motorized_after} after."
+        )
     print(f"\nDefects Description rows changed: {text_stats['desc_rows_fixed']}")
     print(f"Categorical field cells standardized: {text_stats['categorical_fixed']}")
 

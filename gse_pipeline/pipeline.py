@@ -315,18 +315,6 @@ def _apply_case(token, target_upper):
 
 
 def _fix_description(desc):
-    """Apply, in order: shift-key parenthesis-typo fix, spelling
-    corrections, 'non negligence' hyphenation, trailing-period removal,
-    parenthesis-spacing tightening, and case normalization.
-
-    Order matters: spelling must be corrected BEFORE the hyphenation check,
-    otherwise a row like "NON NEGLUGENCE" only gets the spelling fixed and
-    never gets the space-to-hyphen conversion because the un-corrected
-    phrase doesn't match the "non negligence" pattern being searched for
-    inside the corrected pass. Trailing periods must be stripped in a loop
-    (some rows had DOUBLE trailing periods, e.g. ". .", which a single
-    non-repeating regex would only catch once).
-    """
     if desc is None:
         return desc, False
     original = desc
@@ -367,7 +355,7 @@ def _fix_description(desc):
 
 def standardize_text(rows):
     """Mutates rows in place: standardizes Defects Description and the
-    three categorical fields. Returns a stats dict for the audit trail."""
+    four categorical fields. Returns a stats dict for the audit trail."""
     desc_fixed = 0
     categorical_fixed = 0
 
@@ -377,7 +365,8 @@ def standardize_text(rows):
             desc_fixed += 1
         row["Defects Description"] = new_desc
 
-        for col_name in ("Defects Categorization", "Defects Specification", "Equipment Type"):
+        for col_name in ("Defects Categorization", "Defects Specification", "Equipment Type",
+                 "Motorized/Non-Motorized"):
             val = row[col_name]
             if val is None:
                 continue

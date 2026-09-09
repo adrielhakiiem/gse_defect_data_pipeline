@@ -214,6 +214,12 @@ CONFIRMED_NOT_TYPOS = {
 # Categorical (drop-down-style) field standardization: {column: {lowercased
 # variant: canonical value}}. Applied as exact (not fuzzy) matches only.
 CATEGORICAL_MAP = {
+    # This relies on standardize_text()'s exact-match lookup (str(val).strip().lower()).
+    # Never convert it to a regex or substring match: "motorized" in value.lower()
+    # would incorrectly match inside "Non-Motorized" too.
+    "Motorized/Non-Motorized": {
+        "non - motorized": "Non-Motorized",
+    },
     "Defects Categorization": {
         "body work": "Body Work",
     },

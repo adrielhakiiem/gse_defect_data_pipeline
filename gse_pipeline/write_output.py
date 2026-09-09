@@ -1,4 +1,6 @@
 from collections import Counter
+import os
+import tempfile
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -315,7 +317,21 @@ def write_workbook(rows, stats, text_stats, malay_count, date_failures,
     # _write_equipment_code_mismatch_sheet(wb, equipment_code_qa)  # DISABLED EQUIPMENT-CODE QA
     _write_qa_sheet(wb, stats, text_stats, malay_count, date_failures, maint_stats)
     _write_changelog_sheet(wb, spelling_counts, categorical_rows, format_fix_counts)
-    wb.save(output_path)
+    output_path = os.fspath(output_path)
+    output_dir = os.path.dirname(os.path.abspath(output_path))
+    output_name = os.path.basename(output_path)
+    temp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=".xlsx", prefix=f".{output_name}.",
+            dir=output_dir, delete=False
+        ) as temp_file:
+            temp_path = temp_file.name
+        wb.save(temp_path)
+        os.replace(temp_path, output_path)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 if __name__ == "__main__":
