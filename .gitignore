@@ -3,6 +3,17 @@
 /EDR_GSE_Master_MERGED.xlsx
 /EDR_GSE_Pipeline_Documentation.docx
 ~$*.xlsx
+*.xls
+*.xlsx
+*.csv
+*.parquet
+~$*
+
+# Generated Python/cache/editor files
+__pycache__/
+*.py[cod]
+.DS_Store
+.vscode/
 
 # Local machine / SharePoint path settings (never commit these)
 .env

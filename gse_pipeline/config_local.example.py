@@ -2,5 +2,5 @@
 
 from pathlib import Path
 
-SHAREPOINT_SOURCE_FILE = Path("/private/path/to/Data Consolidation GSE TCR.xlsx")
-SHAREPOINT_OUTPUT_FILE = Path("/private/path/to/EDR_GSE_Master_MERGED.xlsx")
+SHAREPOINT_SOURCE_FILE = Path("/private/path/to/EDR (JAN-AUG) 2026.xls")
+SHAREPOINT_OUTPUT_FILE = Path("/private/path/to/EDR_JANAUG_2026_CLEANED.xlsx")
