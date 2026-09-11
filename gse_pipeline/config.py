@@ -17,8 +17,28 @@ SOURCE_FILE = Path(config_local.SHAREPOINT_SOURCE_FILE)
 # SOURCE_FILE = ROOT_DIR / "EDR (JAN-AUG) 2026.xls"
 
 # OUTPUT: SharePoint publishing is active after local review.
-# OUTPUT_FILE = ROOT_DIR / "EDR_JANAUG_2026_CLEANED.xlsx"
-OUTPUT_FILE = Path(config_local.SHAREPOINT_OUTPUT_FILE)
+OUTPUT_FILE = ROOT_DIR / "EDR_JANAUG_2026_CLEANED.xlsx"
+# OUTPUT_FILE = Path(config_local.SHAREPOINT_OUTPUT_FILE)
+
+# Display names for categorical values in the cleaned workbook. Matching is
+# case-insensitive and limited to complete field values.
+WORK_STATUS_MAP = {
+    "waiting parts and ror": "Waiting For Spare",
+    "flm h/o to workshop": "FLM H/O to Workshop",
+}
+
+WORK_ORDER_TRADE_MAP = {
+    "welding shop": "Welding Shop",
+    "paint shop": "Paint Shop",
+    "jack - tow bar": "Jack - Tow Bar",
+    "component overhaul": "Component Overhaul",
+    "component electrical": "Component Electrical",
+    "house keeping": "House Keeping",
+    "electrical support": "Electrical Support",
+    "foreman approval": "Foreman Approval",
+    "tool crib": "Tool Crib",
+    "material mgmnt": "Material Management",
+}
 
 # Known spelling variants are excluded from rare-word suggestions.
 SPELLING_MAP = {

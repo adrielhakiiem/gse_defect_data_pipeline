@@ -67,6 +67,43 @@ def normalize_whitespace(rows):
     return _stats(changed)
 
 
+def normalize_categories(rows):
+    """Normalize configured display names for categorical fields."""
+    mappings = {
+        "Work Status": config.WORK_STATUS_MAP,
+        "Work Order Trade": config.WORK_ORDER_TRADE_MAP,
+    }
+    changed = 0
+    field_changes = Counter()
+    lookup_maps = {
+        field: {source.casefold(): target for source, target in mapping.items()}
+        for field, mapping in mappings.items()
+    }
+
+    for row in rows:
+        row_changed = False
+        for field, lookup in lookup_maps.items():
+            value = row.get(field)
+            if not isinstance(value, str):
+                continue
+            replacement = lookup.get(value.casefold())
+            if replacement is not None and replacement != value:
+                row[field] = replacement
+                field_changes[field] += 1
+                row_changed = True
+        if row_changed:
+            changed += 1
+
+    print(f"Rows changed by category normalization: {changed}")
+    print(f"  Work Status values changed: {field_changes['Work Status']}")
+    print(f"  Work Order Trade values changed: {field_changes['Work Order Trade']}")
+    return _stats(
+        changed,
+        work_status_values_changed=field_changes["Work Status"],
+        work_order_trade_values_changed=field_changes["Work Order Trade"],
+    )
+
+
 def normalize_equipment_code(rows):
     """Normalize both identifiers, removing Excel's trailing ``.0`` values."""
     changed = 0
@@ -277,6 +314,7 @@ def clean_rows(rows):
     """Run the independent cleaning steps in an auditable order."""
     stats = {"rows_read": len(rows)}
     stats["whitespace"] = normalize_whitespace(rows)
+    stats["categories"] = normalize_categories(rows)
     stats["equipment_code"] = normalize_equipment_code(rows)
     stats["spelling"] = standardize_spelling(rows)
     stats["non_defect"] = flag_non_defect_rows(rows)
